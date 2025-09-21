@@ -1,0 +1,10 @@
+name = "noraneko-apt-repo"
+main = "worker.js"
+compatibility_date = "2024-09-21"
+
+[assets]
+directory = "public"
+
+# Serve static files directly from assets, only proxy .deb files through worker
+[vars]
+GITHUB_REPO = "f3liz-dev/noraneko"

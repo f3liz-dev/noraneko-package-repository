@@ -1,0 +1,23 @@
+# Node modules
+node_modules/
+
+# Wrangler generated files
+.wrangler/
+
+# Temporary files
+*.tmp
+*.temp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build artifacts
+dist/
+build/

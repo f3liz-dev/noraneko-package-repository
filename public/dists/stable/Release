@@ -1,0 +1,17 @@
+Origin: Noraneko Package Repository
+Label: Noraneko
+Suite: stable
+Codename: stable
+Date: Sun, 21 Sep 2025 09:23:04 +0000
+Architectures: amd64
+Components: main
+Description: APT repository for Noraneko packages
+MD5Sum:
+ 71739105218e997d13d3d7f6b4310394 147 main/binary-amd64/Packages
+ 2568b1619121688e920d2cc50c46b5b0 136 main/binary-amd64/Packages.gz
+SHA1:
+ a763a337a0a5e324864a3056b8b4b891bc7dfc79 147 main/binary-amd64/Packages
+ d4511458e5cf018762cd00ec3e4e8df9cdcaf8ff 136 main/binary-amd64/Packages.gz
+SHA256:
+ 1615981f125bb364262101b6e7ed5f7cc9769e638deb19718f4c0271c722fc07 147 main/binary-amd64/Packages
+ be9991e499b817279837a71469ed1262c3010c6f0e86da203cffd001a0a4fa0b 136 main/binary-amd64/Packages.gz

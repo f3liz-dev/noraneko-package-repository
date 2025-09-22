@@ -1,0 +1,6 @@
+Name: stable
+From: stable
+Method: file:///home/runner/work/noraneko-package-repository/noraneko-package-repository
+Components: main
+Architectures: amd64 source
+GetInRelease: no

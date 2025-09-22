@@ -21,3 +21,15 @@ Thumbs.db
 # Build artifacts
 dist/
 build/
+
+# Reprepro generated files (should be committed)
+# dists/
+# pool/
+
+# Reprepro working directories
+db/
+logs/
+
+# Package staging areas
+archive/
+incoming/*.deb

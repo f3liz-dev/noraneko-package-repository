@@ -1,0 +1,35 @@
+# Node modules
+node_modules/
+
+# Wrangler generated files
+.wrangler/
+
+# Temporary files
+*.tmp
+*.temp
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Build artifacts
+dist/
+build/
+
+# Reprepro generated files (should be committed)
+# dists/
+# pool/
+
+# Reprepro working directories
+db/
+logs/
+
+# Package staging areas
+archive/
+incoming/*.deb

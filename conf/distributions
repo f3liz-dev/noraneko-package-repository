@@ -1,0 +1,7 @@
+Origin: Noraneko Package Repository
+Label: Noraneko
+Codename: stable
+Architectures: amd64 source
+Components: main
+Description: APT repository for Noraneko packages
+Pull: stable

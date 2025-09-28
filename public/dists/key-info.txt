@@ -1,0 +1,6 @@
+# GPG Key Information
+Key ID: 273541F3ACDBA29F
+Fingerprint: 9BD1C284ACE413FE3429EA91273541F3ACDBA29F
+Name: F3liz Repository (APT Repository Signing Key) <f3liz-dev@proton.me>
+Export Date: 2025-09-28 13:03:12 UTC
+Repository: f3liz-dev/noraneko-package-repository

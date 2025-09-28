@@ -105,12 +105,12 @@ jobs:
       run: |
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
-        
+
+        git add dists/
         # Check if there are changes to commit
         if git diff --quiet && git diff --staged --quiet; then
           echo "ℹ️  No changes to commit"
         else
-          git add dists/
           git commit -m "Update GPG public key export
 
           Key ID: ${{ steps.gpg-info.outputs.key_id }}

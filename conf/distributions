@@ -1,7 +1,7 @@
 Origin: Noraneko Package Repository
 Label: Noraneko
-Codename: stable
+Codename: alpha
 Architectures: amd64 source
 Components: main
 Description: APT repository for Noraneko packages
-Pull: stable
+SignWith: yes

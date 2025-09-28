@@ -47,12 +47,14 @@ jobs:
         
         RELEASE_TAG="${{ github.event.release.tag_name || 'latest' }}"
         if [ "$RELEASE_TAG" = "latest" ]; then
-          RELEASE_TAG=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r .tag_name)
+          RELEASE_TAG=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r 'select(.tag_name != null) | .tag_name // empty')
         fi
         
-        curl -s https://api.github.com/repos/${{ github.repository }}/releases/tags/$RELEASE_TAG \
-          | jq -r '.assets[] | select(.name | endswith(".deb")) | .browser_download_url' \
-          | xargs -I {} wget -P incoming/ {}
+        if [ -n "$RELEASE_TAG" ]; then
+          curl -s https://api.github.com/repos/${{ github.repository }}/releases/tags/$RELEASE_TAG \
+            | jq -r 'select(.assets != null) | .assets[]? | select(.name | endswith(".deb")) | .browser_download_url' \
+            | while read -r url; do [ -n "$url" ] && wget -P incoming/ "$url"; done
+        fi
           
         for deb in incoming/*.deb; do
           [ -f "$deb" ] && debsigs --sign=origin --default-key="$GPG_KEY_ID" "$deb"
@@ -60,7 +62,8 @@ jobs:
         
     - name: Update repository
       run: |
-        DISTRIBUTION="alpha"
+        DISTRIBUTION="stable"
+        [[ "${{ github.event.release.tag_name }}" =~ (alpha|beta|rc|pre|dev) ]] && DISTRIBUTION="alpha"
         
         [ ! -d "dists" ] && reprepro -b . export $DISTRIBUTION
         

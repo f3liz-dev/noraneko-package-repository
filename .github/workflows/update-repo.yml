@@ -117,7 +117,7 @@ jobs:
         
         # Generate repository metadata
         mkdir -p public/dists
-        reprepro -b . --outdir public/dists export $DISTRIBUTION
+        reprepro -b . --outdir public export $DISTRIBUTION
         
     - name: Build & Deploy Worker
       uses: cloudflare/wrangler-action@v3

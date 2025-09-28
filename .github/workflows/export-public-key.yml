@@ -70,13 +70,13 @@ jobs:
         
         # Create a key info file
         cat > dists/key-info.txt << EOF
-# GPG Key Information
-Key ID: $KEY_ID
-Fingerprint: ${{ steps.gpg-info.outputs.fingerprint }}
-Name: $(gpg --list-keys $KEY_ID | grep uid | head -1 | sed 's/uid.*] //')
-Export Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-Repository: ${{ github.repository }}
-EOF
+        # GPG Key Information
+        Key ID: $KEY_ID
+        Fingerprint: ${{ steps.gpg-info.outputs.fingerprint }}
+        Name: $(gpg --list-keys $KEY_ID | grep uid | head -1 | sed 's/uid.*] //')
+        Export Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+        Repository: ${{ github.repository }}
+        EOF
         
         echo "✅ Public key exported to dists/"
         ls -la dists/
@@ -113,9 +113,9 @@ EOF
           git add dists/
           git commit -m "Update GPG public key export
 
-Key ID: ${{ steps.gpg-info.outputs.key_id }}
-Export Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-Triggered by: ${{ github.event_name }}"
+          Key ID: ${{ steps.gpg-info.outputs.key_id }}
+          Export Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          Triggered by: ${{ github.event_name }}"
           
           git push
           echo "✅ Changes committed and pushed"

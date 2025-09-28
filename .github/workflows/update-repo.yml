@@ -39,10 +39,10 @@ jobs:
         echo "batch" >> ~/.gnupg/gpg.conf
         echo "yes" >> ~/.gnupg/gpg.conf
         
-        # Start GPG agent and cache passphrase
-        gpg-agent --daemon
-        echo "$GPG_PASSPHRASE" | gpg --batch --yes --passphrase-fd 0 --pinentry-mode loopback --sign --armor --detach-sign --output /tmp/test.sig < /dev/null
-        rm -f /tmp/test.sig
+        # Cache passphrase by doing a test sign operation
+        echo "test" | gpg --batch --yes --passphrase "$GPG_PASSPHRASE" \
+          --pinentry-mode loopback --default-key "$GPG_KEY_ID" \
+          --clearsign > /dev/null
         
     - name: Download release assets
       id: download
@@ -95,6 +95,10 @@ jobs:
         # Use different distributions based on release type
         DISTRIBUTION="alpha"
         
+        # If this is a stable release (no pre-release identifiers), use stable
+        if [ "${{ github.event_name }}" = "release" ] && [[ ! "${{ github.event.release.tag_name }}" =~ (alpha|beta|rc|pre|dev) ]]; then
+          DISTRIBUTION="stable"
+        fi
         
         echo "Using distribution: $DISTRIBUTION"
         

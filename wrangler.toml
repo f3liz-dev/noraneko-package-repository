@@ -3,8 +3,7 @@ main = "worker.js"
 compatibility_date = "2024-09-21"
 
 [assets]
-directory = "."
-include = ["dists/**/*"]
+directory = "public"
 
 # Serve static files from the repository root, but only include the dists directory
 # .deb files and other content can be proxied through the worker

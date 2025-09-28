@@ -1,0 +1,5 @@
+Component: main
+Origin: Noraneko Package Repository
+Label: Noraneko
+Architecture: amd64
+Description: APT repository for Noraneko packages

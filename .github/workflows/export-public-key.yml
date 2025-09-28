@@ -3,6 +3,9 @@ name: Export GPG Public Key
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   export-public-key:
     runs-on: ubuntu-latest

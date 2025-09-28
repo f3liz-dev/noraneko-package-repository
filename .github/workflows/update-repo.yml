@@ -13,122 +13,74 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+    - uses: actions/checkout@v4
       with:
         fetch-depth: 0
         
-    - name: Install required packages
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y reprepro gnupg2 debsigs
+    - name: Install dependencies
+      run: sudo apt-get update && sudo apt-get install -y reprepro gnupg2 debsigs
         
-    - name: Setup GPG key
+    - name: Setup GPG
       env:
         GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
         GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
         GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
       run: |
-        # Import the private key
         echo "$GPG_PRIVATE_KEY" | gpg --import --batch
-        
-        # Configure GPG for unattended signing
-        echo "default-key $GPG_KEY_ID" >> ~/.gnupg/gpg.conf
-        echo "use-agent" >> ~/.gnupg/gpg.conf
-        echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
-        echo "batch" >> ~/.gnupg/gpg.conf
-        echo "yes" >> ~/.gnupg/gpg.conf
-        
-        # Cache passphrase by doing a test sign operation
+        cat >> ~/.gnupg/gpg.conf << EOF
+        use-agent
+        pinentry-mode loopback
+        batch
+        yes
+        cert-digest-algo SHA256
+        digest-algo SHA256
+        EOF
         echo "test" | gpg --batch --yes --passphrase "$GPG_PASSPHRASE" \
           --pinentry-mode loopback --default-key "$GPG_KEY_ID" \
           --clearsign > /dev/null
         
-    - name: Download release assets
-      id: download
+    - name: Download and sign packages
+      env:
+        GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
       run: |
-        # Create incoming directory for packages
         mkdir -p incoming
         
-        # Get release information
-        if [ "${{ github.event_name }}" = "release" ]; then
-          RELEASE_TAG="${{ github.event.release.tag_name }}"
-        else
-          # For manual trigger, get latest release
+        RELEASE_TAG="${{ github.event.release.tag_name || 'latest' }}"
+        if [ "$RELEASE_TAG" = "latest" ]; then
           RELEASE_TAG=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r .tag_name)
         fi
         
-        echo "Processing release: $RELEASE_TAG"
-        
-        # Download .deb files from the release
         curl -s https://api.github.com/repos/${{ github.repository }}/releases/tags/$RELEASE_TAG \
           | jq -r '.assets[] | select(.name | endswith(".deb")) | .browser_download_url' \
-          | while read url; do
-            echo "Downloading: $url"
-            wget -P incoming/ "$url"
-          done
+          | xargs -I {} wget -P incoming/ {}
           
-        # List downloaded files
-        ls -la incoming/
-        
-    - name: Sign packages
-      env:
-        GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
-        GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
-      run: |
         for deb in incoming/*.deb; do
-          if [ -f "$deb" ]; then
-            echo "Signing package: $deb"
-            
-            # Sign the package with debsigs using "origin" signature type
-            # This embeds the signature inside the .deb file
-            debsigs --sign=origin --default-key="$GPG_KEY_ID" "$deb"
-            
-            # List signatures to verify
-            echo "Signatures in $deb:"
-            debsigs --list "$deb"
-          fi
+          [ -f "$deb" ] && debsigs --sign=origin --default-key="$GPG_KEY_ID" "$deb"
         done
         
-    - name: Update repository with reprepro
+    - name: Update repository
       run: |
-        # Use different distributions based on release type
-        DISTRIBUTION="alpha"
+        DISTRIBUTION="stable"
+        [[ "${{ github.event.release.tag_name }}" =~ (alpha|beta|rc|pre|dev) ]] && DISTRIBUTION="alpha"
         
-        # If this is a stable release (no pre-release identifiers), use stable
-        if [ "${{ github.event_name }}" = "release" ] && [[ ! "${{ github.event.release.tag_name }}" =~ (alpha|beta|rc|pre|dev) ]]; then
-          DISTRIBUTION="stable"
-        fi
+        [ ! -d "dists" ] && reprepro -b . export $DISTRIBUTION
         
-        echo "Using distribution: $DISTRIBUTION"
-        
-        # Initialize repository if needed
-        if [ ! -d "dists" ]; then
-          reprepro -b . export $DISTRIBUTION
-        fi
-        
-        # Add signed packages to repository
         for deb in incoming/*.deb; do
-          if [ -f "$deb" ]; then
-            echo "Adding signed package: $deb"
-            reprepro -b . includedeb $DISTRIBUTION "$deb"
-          fi
+          [ -f "$deb" ] && reprepro -b . includedeb $DISTRIBUTION "$deb"
         done
         
-        # Generate repository metadata
         mkdir -p public/dists
         reprepro -b . --outdir public export $DISTRIBUTION
         
-    - name: Build & Deploy Worker
+    - name: Deploy
       uses: cloudflare/wrangler-action@v3
       with:
         apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
         accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         
-    - name: Commit and push changes
+    - name: Commit changes
       run: |
-        git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
-        git config --local user.name "github-actions[bot]"
-        git add .
-        git commit -m "Update APT repository for release ${{ github.event.release.tag_name || 'latest' }}" || exit 0
+        git config --local user.email "action@github.com"
+        git config --local user.name "github-actions"
+        git add . && git commit -m "Update APT repository" || true
         git push

@@ -4,4 +4,4 @@ Codename: alpha
 Architectures: amd64 source
 Components: main
 Description: APT repository for Noraneko packages
-SignWith: yes
+SignWith: 9BD1C284ACE413FE3429EA91273541F3ACDBA29F

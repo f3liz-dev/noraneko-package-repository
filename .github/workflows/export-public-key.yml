@@ -55,21 +55,21 @@ jobs:
         
     - name: Create dists directory
       run: |
-        mkdir -p dists
+        mkdir -p public/dists
         
     - name: Export public key
       run: |
         KEY_ID="${{ steps.gpg-info.outputs.key_id }}"
         
         # Export public key in ASCII armor format
-        gpg --armor --export $KEY_ID > dists/public-key.asc
+        gpg --armor --export $KEY_ID > public/dists/public-key.asc
         
         # Also create alternative filenames for convenience
-        cp dists/public-key.asc dists/key.asc
-        cp dists/public-key.asc dists/gpg-key.asc
+        cp public/dists/public-key.asc public/dists/key.asc
+        cp public/dists/public-key.asc public/dists/gpg-key.asc
         
         # Create a key info file
-        cat > dists/key-info.txt << EOF
+        cat > public/dists/key-info.txt << EOF
         # GPG Key Information
         Key ID: $KEY_ID
         Fingerprint: ${{ steps.gpg-info.outputs.fingerprint }}
@@ -79,14 +79,14 @@ jobs:
         EOF
         
         echo "✅ Public key exported to dists/"
-        ls -la dists/
+        ls -la public/dists/
         
     - name: Verify exported key
       run: |
         KEY_ID="${{ steps.gpg-info.outputs.key_id }}"
         
         # Verify the exported key is valid
-        if gpg --dry-run --import dists/public-key.asc 2>/dev/null; then
+        if gpg --dry-run --import public/dists/public-key.asc 2>/dev/null; then
           echo "✅ Exported public key is valid"
         else
           echo "❌ Exported public key is invalid"
@@ -95,7 +95,7 @@ jobs:
         
         # Show key details
         echo "📋 Exported key details:"
-        gpg --show-keys dists/public-key.asc
+        gpg --show-keys public/dists/public-key.asc
         
     - name: Skip keyserver upload (hobby project)
       run: |
@@ -106,7 +106,7 @@ jobs:
         git config --local user.email "action@github.com"
         git config --local user.name "GitHub Action"
 
-        git add dists/
+        git add public/dists/
         # Check if there are changes to commit
         if git diff --quiet && git diff --staged --quiet; then
           echo "ℹ️  No changes to commit"

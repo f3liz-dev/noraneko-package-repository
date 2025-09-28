@@ -116,7 +116,7 @@ jobs:
         done
         
         # Generate repository metadata
-        reprepro -b . export $DISTRIBUTION
+        reprepro -b public export $DISTRIBUTION
         
     - name: Build & Deploy Worker
       uses: cloudflare/wrangler-action@v3

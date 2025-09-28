@@ -18,20 +18,31 @@ jobs:
       with:
         fetch-depth: 0
         
-    - name: Install reprepro
+    - name: Install required packages
       run: |
         sudo apt-get update
-        sudo apt-get install -y reprepro gnupg2
+        sudo apt-get install -y reprepro gnupg2 debsigs
         
     - name: Setup GPG key
+      env:
+        GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+        GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
       run: |
-        echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --import --batch
-        echo "${{ secrets.GPG_PASSPHRASE }}" | gpg --batch --yes --passphrase-fd 0 --pinentry-mode loopback --export-secret-keys > /tmp/secret.key
-        gpg --import /tmp/secret.key
-        rm /tmp/secret.key
-        echo "default-key ${{ secrets.GPG_KEY_ID }}" >> ~/.gnupg/gpg.conf
+        # Import the private key
+        echo "$GPG_PRIVATE_KEY" | gpg --import --batch
+        
+        # Configure GPG for unattended signing
+        echo "default-key $GPG_KEY_ID" >> ~/.gnupg/gpg.conf
         echo "use-agent" >> ~/.gnupg/gpg.conf
         echo "pinentry-mode loopback" >> ~/.gnupg/gpg.conf
+        echo "batch" >> ~/.gnupg/gpg.conf
+        echo "yes" >> ~/.gnupg/gpg.conf
+        
+        # Start GPG agent and cache passphrase
+        gpg-agent --daemon
+        echo "$GPG_PASSPHRASE" | gpg --batch --yes --passphrase-fd 0 --pinentry-mode loopback --sign --armor --detach-sign --output /tmp/test.sig < /dev/null
+        rm -f /tmp/test.sig
         
     - name: Download release assets
       id: download
@@ -60,23 +71,48 @@ jobs:
         # List downloaded files
         ls -la incoming/
         
-    - name: Update repository with reprepro
+    - name: Sign packages
+      env:
+        GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
       run: |
-        # Initialize repository if needed
-        if [ ! -d "dists" ]; then
-          reprepro -b . export stable
-        fi
-        
-        # Add packages to repository
         for deb in incoming/*.deb; do
           if [ -f "$deb" ]; then
-            echo "Adding package: $deb"
-            reprepro -b . includedeb stable "$deb"
+            echo "Signing package: $deb"
+            
+            # Sign the package with debsigs using "origin" signature type
+            # This embeds the signature inside the .deb file
+            debsigs --sign=origin --default-key="$GPG_KEY_ID" "$deb"
+            
+            # List signatures to verify
+            echo "Signatures in $deb:"
+            debsigs --list "$deb"
+          fi
+        done
+        
+    - name: Update repository with reprepro
+      run: |
+        # Use different distributions based on release type
+        DISTRIBUTION="alpha"
+        
+        
+        echo "Using distribution: $DISTRIBUTION"
+        
+        # Initialize repository if needed
+        if [ ! -d "dists" ]; then
+          reprepro -b . export $DISTRIBUTION
+        fi
+        
+        # Add signed packages to repository
+        for deb in incoming/*.deb; do
+          if [ -f "$deb" ]; then
+            echo "Adding signed package: $deb"
+            reprepro -b . includedeb $DISTRIBUTION "$deb"
           fi
         done
         
         # Generate repository metadata
-        reprepro -b . export stable
+        reprepro -b . export $DISTRIBUTION
         
     - name: Build & Deploy Worker
       uses: cloudflare/wrangler-action@v3

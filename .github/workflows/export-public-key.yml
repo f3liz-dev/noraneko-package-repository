@@ -1,0 +1,119 @@
+name: Export GPG Public Key
+
+on:
+  workflow_dispatch:
+
+jobs:
+  export-public-key:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        
+    - name: Setup GPG
+      run: |
+        # Create GPG directory with proper permissions
+        mkdir -p ~/.gnupg
+        chmod 700 ~/.gnupg
+        
+        # Import private key quietly
+        echo "${{ secrets.GPG_PRIVATE_KEY }}" | gpg --import --batch --quiet
+        
+        # Configure GPG
+        cat > ~/.gnupg/gpg.conf << EOF
+        use-agent
+        pinentry-mode loopback
+        quiet
+        EOF
+        
+        # Verify key was imported
+        if gpg --list-secret-keys --keyid-format LONG | grep -q "sec"; then
+          echo "✅ GPG key imported successfully"
+        else
+          echo "❌ GPG key import failed"
+          exit 1
+        fi
+        
+    - name: Get GPG Key ID
+      id: gpg-info
+      run: |
+        # Extract key ID from imported private key
+        KEY_ID=$(gpg --list-secret-keys --keyid-format LONG | grep sec | awk '{print $2}' | cut -d'/' -f2)
+        echo "key_id=$KEY_ID" >> $GITHUB_OUTPUT
+        echo "Found GPG Key ID: $KEY_ID"
+        
+        # Get key fingerprint for verification
+        FINGERPRINT=$(gpg --fingerprint $KEY_ID | grep -A1 "pub" | tail -1 | tr -d ' ')
+        echo "fingerprint=$FINGERPRINT" >> $GITHUB_OUTPUT
+        echo "Key fingerprint: $FINGERPRINT"
+        
+    - name: Create dists directory
+      run: |
+        mkdir -p dists
+        
+    - name: Export public key
+      run: |
+        KEY_ID="${{ steps.gpg-info.outputs.key_id }}"
+        
+        # Export public key in ASCII armor format
+        gpg --armor --export $KEY_ID > dists/public-key.asc
+        
+        # Also create alternative filenames for convenience
+        cp dists/public-key.asc dists/key.asc
+        cp dists/public-key.asc dists/gpg-key.asc
+        
+        # Create a key info file
+        cat > dists/key-info.txt << EOF
+# GPG Key Information
+Key ID: $KEY_ID
+Fingerprint: ${{ steps.gpg-info.outputs.fingerprint }}
+Name: $(gpg --list-keys $KEY_ID | grep uid | head -1 | sed 's/uid.*] //')
+Export Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+Repository: ${{ github.repository }}
+EOF
+        
+        echo "✅ Public key exported to dists/"
+        ls -la dists/
+        
+    - name: Verify exported key
+      run: |
+        KEY_ID="${{ steps.gpg-info.outputs.key_id }}"
+        
+        # Verify the exported key is valid
+        if gpg --dry-run --import dists/public-key.asc 2>/dev/null; then
+          echo "✅ Exported public key is valid"
+        else
+          echo "❌ Exported public key is invalid"
+          exit 1
+        fi
+        
+        # Show key details
+        echo "📋 Exported key details:"
+        gpg --show-keys dists/public-key.asc
+        
+    - name: Skip keyserver upload (hobby project)
+      run: |
+        echo "ℹ️  Skipping keyserver upload - keeping it simple for hobby project"
+        
+    - name: Commit and push changes
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        
+        # Check if there are changes to commit
+        if git diff --quiet && git diff --staged --quiet; then
+          echo "ℹ️  No changes to commit"
+        else
+          git add dists/
+          git commit -m "Update GPG public key export
+
+Key ID: ${{ steps.gpg-info.outputs.key_id }}
+Export Date: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+Triggered by: ${{ github.event_name }}"
+          
+          git push
+          echo "✅ Changes committed and pushed"
+        fi

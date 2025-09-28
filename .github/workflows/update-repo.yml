@@ -62,8 +62,7 @@ jobs:
         
     - name: Update repository
       run: |
-        DISTRIBUTION="stable"
-        [[ "${{ github.event.release.tag_name }}" =~ (alpha|beta|rc|pre|dev) ]] && DISTRIBUTION="alpha"
+        DISTRIBUTION="alpha"
         
         [ ! -d "dists" ] && reprepro -b . export $DISTRIBUTION
         

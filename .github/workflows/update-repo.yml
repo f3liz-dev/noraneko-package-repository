@@ -27,17 +27,32 @@ jobs:
         GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
       run: |
         echo "$GPG_PRIVATE_KEY" | gpg --import --batch
+        
+        # Configure GPG for automated signing
         cat >> ~/.gnupg/gpg.conf << EOF
         use-agent
         pinentry-mode loopback
         batch
         yes
-        cert-digest-algo SHA256
-        digest-algo SHA256
         EOF
+        
+        cat >> ~/.gnupg/gpg-agent.conf << EOF
+        allow-loopback-pinentry
+        max-cache-ttl 7200
+        default-cache-ttl 7200
+        EOF
+        
+        # Restart GPG agent
+        gpg-connect-agent reloadagent /bye
+        
+        # Test signing with passphrase
         echo "test" | gpg --batch --yes --passphrase "$GPG_PASSPHRASE" \
           --pinentry-mode loopback --default-key "$GPG_KEY_ID" \
           --clearsign > /dev/null
+        
+        # Preset passphrase in GPG agent for reprepro
+        echo "$GPG_PASSPHRASE" | /usr/lib/gnupg2/gpg-preset-passphrase \
+          --preset $(gpg --with-keygrip --list-secret-keys "$GPG_KEY_ID" | grep Keygrip | head -1 | awk '{print $3}') || true
         
     - name: Verify reprepro configuration
       run: |
@@ -108,22 +123,25 @@ jobs:
     - name: Update repository
       env:
         GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
       run: |
         DISTRIBUTION="alpha"
         
-        export GPG_TTY=$(tty)
-        echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
-        gpg-connect-agent reloadagent /bye
-        
+        echo "📦 Adding packages to repository..."
         for deb in incoming/*.deb; do
           if [ -f "$deb" ]; then
-            echo "$GPG_PASSPHRASE" | reprepro -b . --gnupghome ~/.gnupg \
-              includedeb $DISTRIBUTION "$deb"
+            echo "Adding: $(basename $deb)"
+            reprepro -b . -V includedeb $DISTRIBUTION "$deb"
           fi
         done
         
+        echo "🔐 Exporting and signing repository..."
         reprepro -b . export $DISTRIBUTION
         
+        echo "📋 Repository contents:"
+        reprepro -b . list $DISTRIBUTION || true
+        
+        mkdir -p public
         cp -r dists pool public/
         
     - name: Deploy

@@ -13,7 +13,7 @@ export default {
 };
 
 async function handleDebFileProxy(request, env, url) {
-  const debFileName = url.pathname.split('/').pop();
+  const debFileName = decodeURIComponent(url.pathname.split('/').pop());
   const githubRepo = env.GITHUB_REPO || 'f3liz-dev/noraneko';
   
   try {

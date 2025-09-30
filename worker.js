@@ -12,7 +12,7 @@ export default {
 };
 
 async function handleDebFileProxy(request, env, url) {
-  const debFileName = decodeURIComponent(url.pathname.split('/').pop());
+  const debFileName = decodeURIComponent(url.pathname.split('/').pop()).replace('~', '.');
   const githubRepo = env.GITHUB_REPO || 'f3liz-dev/noraneko-package-repository';
   
   // Create a headers object to use for API calls

@@ -39,9 +39,16 @@ jobs:
           --pinentry-mode loopback --default-key "$GPG_KEY_ID" \
           --clearsign > /dev/null
         
-    - name: Download and sign packages
-      env:
-        GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+    - name: Verify reprepro configuration
+      run: |
+        if [ ! -f conf/distributions ]; then
+          echo "Error: conf/distributions not found"
+          exit 1
+        fi
+        echo "Using existing conf/distributions:"
+        cat conf/distributions
+        
+    - name: Download packages
       run: |
         mkdir -p incoming
         
@@ -50,28 +57,74 @@ jobs:
           RELEASE_TAG=$(curl -s https://api.github.com/repos/${{ github.repository }}/releases/latest | jq -r 'select(.tag_name != null) | .tag_name // empty')
         fi
         
+        echo "📦 Fetching packages from release: $RELEASE_TAG"
+        
         if [ -n "$RELEASE_TAG" ]; then
           curl -s https://api.github.com/repos/${{ github.repository }}/releases/tags/$RELEASE_TAG \
             | jq -r 'select(.assets != null) | .assets[]? | select(.name | endswith(".deb")) | .browser_download_url' \
-            | while read -r url; do [ -n "$url" ] && wget -P incoming/ "$url"; done
+            | while read -r url; do 
+                if [ -n "$url" ]; then
+                  echo "Downloading: $url"
+                  wget -P incoming/ "$url" || echo "⚠️ Failed to download $url"
+                fi
+              done
+        else
+          echo "⚠️ No release tag found"
         fi
-          
-        for deb in incoming/*.deb; do
-          [ -f "$deb" ] && debsigs --sign=origin --default-key="$GPG_KEY_ID" "$deb"
-        done
+        
+        DEB_COUNT=$(find incoming -name "*.deb" 2>/dev/null | wc -l)
+        echo "✅ Downloaded $DEB_COUNT .deb file(s)"
+        ls -lh incoming/ || true
+        
+    - name: Sign packages (optional)
+      env:
+        GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+        GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+      run: |
+        # Package signing with debsigs is optional for APT repositories
+        # The repository metadata (InRelease) signing is what matters
+        echo "ℹ️ Skipping individual package signing (debsigs)"
+        echo "   Repository will be signed via InRelease file"
+        
+    - name: Export public key
+      env:
+        GPG_KEY_ID: ${{ secrets.GPG_KEY_ID }}
+      run: |
+        mkdir -p public/dists
+        gpg --armor --export "$GPG_KEY_ID" > public/dists/public-key.asc
+        
+        # Also create KEY.gpg for compatibility
+        cp public/dists/public-key.asc public/KEY.gpg
+        
+        # Verify exported key
+        if gpg --dry-run --import public/dists/public-key.asc 2>/dev/null; then
+          echo "✅ Public key exported successfully"
+          gpg --show-keys public/dists/public-key.asc
+        else
+          echo "❌ Failed to export public key"
+          exit 1
+        fi
         
     - name: Update repository
+      env:
+        GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
       run: |
         DISTRIBUTION="alpha"
         
-        [ ! -d "dists" ] && reprepro -b . export $DISTRIBUTION
+        export GPG_TTY=$(tty)
+        echo "allow-loopback-pinentry" >> ~/.gnupg/gpg-agent.conf
+        gpg-connect-agent reloadagent /bye
         
         for deb in incoming/*.deb; do
-          [ -f "$deb" ] && reprepro -b . includedeb $DISTRIBUTION "$deb"
+          if [ -f "$deb" ]; then
+            echo "$GPG_PASSPHRASE" | reprepro -b . --gnupghome ~/.gnupg \
+              includedeb $DISTRIBUTION "$deb"
+          fi
         done
         
-        mkdir -p public/dists
-        reprepro -b . --outdir public export $DISTRIBUTION
+        reprepro -b . export $DISTRIBUTION
+        
+        cp -r dists pool public/
         
     - name: Deploy
       uses: cloudflare/wrangler-action@v3

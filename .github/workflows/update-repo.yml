@@ -142,7 +142,7 @@ jobs:
         reprepro -b . list $DISTRIBUTION || true
         
         mkdir -p public
-        cp -r dists pool public/
+        cp -r dists public/
         
     - name: Deploy
       uses: cloudflare/wrangler-action@v3

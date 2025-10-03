@@ -183,20 +183,20 @@ jobs:
         
         mkdir -p public
         
-        # Start JSON structure
-        cat > public/release-map.json << 'JSONEOF'
-{
-  "_metadata": {
-    "generated_at": "
-JSONEOF
-        date -u +"%Y-%m-%dT%H:%M:%SZ" >> public/release-map.json
-        cat >> public/release-map.json << JSONEOF
-",
-    "repository": "${{ github.repository }}",
-    "total_releases": $(jq '. | length' releases.json),
-    "note": "Pool filenames follow Debian convention: package_version_arch.deb"
-  },
-JSONEOF
+        # Get the total number of releases from releases.json
+        TOTAL_RELEASES=$(jq '. | length' releases.json)
+        
+        # Generate the JSON file using a single, clean block
+        cat > public/release-map.json << JSONEOF
+        {
+          "_metadata": {
+            "generated_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
+            "repository": "${{ github.repository }}",
+            "total_releases": ${TOTAL_RELEASES},
+            "note": "Pool filenames follow Debian convention: package_version_arch.deb"
+          }
+        }
+        JSONEOF
         
         # Build the mapping using the extracted package info
         echo "  \"packages\": {" >> public/release-map.json
@@ -223,17 +223,17 @@ JSONEOF
           
           # Use pool_filename as key (what APT will request)
           cat >> public/release-map.json << ENTRYEOF
-    "$pool_filename": {
-      "release": "$RELEASE_TAG",
-      "originalAssetName": "$original_filename",
-      "poolPath": "$pool_path",
-      "packageName": "$pkg_name",
-      "version": "$pkg_version",
-      "architecture": "$pkg_arch",
-      "downloadUrl": "$DOWNLOAD_URL",
-      "size": $ASSET_SIZE
-    }
-ENTRYEOF
+              "$pool_filename": {
+                "release": "$RELEASE_TAG",
+                "originalAssetName": "$original_filename",
+                "poolPath": "$pool_path",
+                "packageName": "$pkg_name",
+                "version": "$pkg_version",
+                "architecture": "$pkg_arch",
+                "downloadUrl": "$DOWNLOAD_URL",
+                "size": $ASSET_SIZE
+              }
+          ENTRYEOF
         done < /tmp/package-info/mapping.txt
         
         echo "" >> public/release-map.json
@@ -274,46 +274,46 @@ ENTRYEOF
         
         # Create index.html for the repository
         cat > public/index.html << 'HTMLEOF'
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Noraneko APT Repository</title>
-    <style>
-        body { font-family: system-ui; max-width: 800px; margin: 40px auto; padding: 0 20px; }
-        pre { background: #f5f5f5; padding: 15px; border-radius: 5px; overflow-x: auto; }
-        code { background: #f5f5f5; padding: 2px 6px; border-radius: 3px; }
-        h1 { color: #333; }
-        .section { margin: 30px 0; }
-    </style>
-</head>
-<body>
-    <h1>Noraneko APT Repository</h1>
-    <div class="section">
-        <h2>Setup Instructions</h2>
-        <p>Add this repository to your system:</p>
-        <pre><code>curl -fsSL https://apt.yourdomain.com/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/noraneko.gpg
-echo "deb [signed-by=/usr/share/keyrings/noraneko.gpg] https://apt.yourdomain.com alpha main" | sudo tee /etc/apt/sources.list.d/noraneko.list
-sudo apt update</code></pre>
-    </div>
-    <div class="section">
-        <h2>Available Resources</h2>
-        <ul>
-            <li><a href="/release-map.json">Release Map</a> - Package to release mapping (includes pool paths)</li>
-            <li><a href="/releases.json">Releases</a> - Detailed release information</li>
-            <li><a href="/KEY.gpg">GPG Key</a> - Repository signing key</li>
-        </ul>
-    </div>
-    <div class="section">
-        <h2>How it works</h2>
-        <p>This repository uses Cloudflare Workers to proxy .deb files from GitHub releases. 
-        When APT requests a package from the pool (e.g., <code>pool/main/n/noraneko-alpha/noraneko-alpha_0.2.0~build1_amd64.deb</code>),
-        the worker maps it to the original GitHub release asset and serves it directly.</p>
-    </div>
-</body>
-</html>
-HTMLEOF
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Noraneko APT Repository</title>
+            <style>
+                body { font-family: system-ui; max-width: 800px; margin: 40px auto; padding: 0 20px; }
+                pre { background: #f5f5f5; padding: 15px; border-radius: 5px; overflow-x: auto; }
+                code { background: #f5f5f5; padding: 2px 6px; border-radius: 3px; }
+                h1 { color: #333; }
+                .section { margin: 30px 0; }
+            </style>
+        </head>
+        <body>
+            <h1>Noraneko APT Repository</h1>
+            <div class="section">
+                <h2>Setup Instructions</h2>
+                <p>Add this repository to your system:</p>
+                <pre><code>curl -fsSL https://apt.yourdomain.com/KEY.gpg | sudo gpg --dearmor -o /usr/share/keyrings/noraneko.gpg
+        echo "deb [signed-by=/usr/share/keyrings/noraneko.gpg] https://apt.yourdomain.com alpha main" | sudo tee /etc/apt/sources.list.d/noraneko.list
+        sudo apt update</code></pre>
+            </div>
+            <div class="section">
+                <h2>Available Resources</h2>
+                <ul>
+                    <li><a href="/release-map.json">Release Map</a> - Package to release mapping (includes pool paths)</li>
+                    <li><a href="/releases.json">Releases</a> - Detailed release information</li>
+                    <li><a href="/KEY.gpg">GPG Key</a> - Repository signing key</li>
+                </ul>
+            </div>
+            <div class="section">
+                <h2>How it works</h2>
+                <p>This repository uses Cloudflare Workers to proxy .deb files from GitHub releases. 
+                When APT requests a package from the pool (e.g., <code>pool/main/n/noraneko-alpha/noraneko-alpha_0.2.0~build1_amd64.deb</code>),
+                the worker maps it to the original GitHub release asset and serves it directly.</p>
+            </div>
+        </body>
+        </html>
+        HTMLEOF
         
         echo "✅ Metadata files created"
         ls -lh public/

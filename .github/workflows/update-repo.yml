@@ -177,50 +177,67 @@ jobs:
         
     - name: Generate release map JSON
       run: |
-        # Fail on any error (-e), undefined variable (-u), or error in a pipeline (-o pipefail).
+        # --- Script Configuration ---
+        # Abort on any error (-e), undefined variable (-u), or pipeline error (-o pipefail).
         set -euo pipefail
         
-        # --- Configuration ---
-        # Use environment variables from GitHub Actions, with local fallbacks.
+        # To enable step-by-step command tracing for deep debugging, uncomment the following line:
+        # set -x
+        
+        # --- Environment Variables & File Paths ---
+        # Use environment variables from GitHub Actions, with local fallbacks for testing.
         RELEASES_FILE="${1:-releases.json}"
         MAPPING_FILE="${2:-/tmp/package-info/mapping.txt}"
         OUTPUT_DIR="public"
         OUTPUT_FILE="$OUTPUT_DIR/release-map.json"
         # The GITHUB_REPOSITORY is provided by the GitHub Actions runner environment.
-        GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-your/repository}" 
+        GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-your/repository}"
         
         # --- Pre-flight Checks ---
         echo "🔎 Running pre-flight checks..."
-        # Ensure jq is available
-        if ! command -v jq &> /dev/null; then
-            echo "❌ Error: jq is not installed. Please install it to continue." >&2
-            exit 1
+        if ! command -v jq &>/dev/null; then
+          echo "❌ Error: jq is not installed. Please install it to continue." >&2
+          exit 1
         fi
-        # Ensure input files exist to prevent cryptic errors later
         for f in "$RELEASES_FILE" "$MAPPING_FILE"; do
-            if [[ ! -f "$f" ]]; then
-                echo "❌ Error: Input file not found at '$f'" >&2
-                exit 1
-            fi
+          if [[ ! -f "$f" ]]; then
+            echo "❌ Error: Input file not found at '$f'." >&2
+            exit 1
+          fi
         done
         echo "✅ Checks passed."
-        
         
         # --- Main Logic ---
         echo "📋 Generating release map..."
         mkdir -p "$OUTPUT_DIR"
         
-        # This jq program is defined in a variable for clarity.
-        # It's more robust, safely handling packages from the mapping file that
-        # might not have a corresponding entry in the releases.json data.
-        read -r -d '' JQ_PROGRAM << 'EOF'
+        # Step 1: Pre-process releases.json into an efficient lookup map.
+        # This isolates the first data transformation step for better error handling.
+        echo "⚙️  Processing release data into a lookup map..."
+        RELEASE_INFO_MAP=$(jq '[ .[] | .assets[]? | {key: .name, value: {release: .tag_name, downloadUrl: .browser_download_url, size: .size}} ] | from_entries' "$RELEASES_FILE")
+        if [[ $? -ne 0 ]]; then
+          echo "❌ Error: Failed to create a lookup map from '$RELEASES_FILE'. Check if it is valid JSON." >&2
+          exit 1
+        fi
+        echo "✅ Release data processed successfully."
+        
+        # Step 2: Pre-process the mapping file into a stream of JSON objects.
+        # This isolates the second data transformation.
+        echo "⚙️  Processing package mapping file..."
+        MAPPING_JSON_STREAM=$(jq --compact-output -R 'split("|") | {originalAssetName: .[0], pool_filename: .[1], poolPath: .[2], packageName: .[3], version: .[4], architecture: .[5]}' "$MAPPING_FILE")
+        if [[ $? -ne 0 ]]; then
+          echo "❌ Error: Failed to process the mapping file '$MAPPING_FILE'. Check its format." >&2
+          exit 1
+        fi
+        echo "✅ Package mapping processed successfully."
+        
+        # The core jq program is stored in a variable for readability.
+        # This logic remains the same but is now fed by pre-validated data.
+        read -r -d '' JQ_PROGRAM <<'EOF'
         (
           [
             inputs | . as $pkg_map |
-            # Look up release data; defaults to null if not found.
             ($release_info_map[$pkg_map.originalAssetName] // null) as $release_data |
-            # Only process entries that have a corresponding release asset. This prevents
-            # errors from trying to access fields on a null value, a likely cause of the original error.
             if $release_data != null then
               {
                 key: $pkg_map.pool_filename,
@@ -235,11 +252,9 @@ jobs:
                   size: $release_data.size
                 }
               }
-            # Silently skip mapping entries that don't have a corresponding release asset.
             else empty end
           ] | from_entries
         ) as $packages |
-        # Construct the final JSON object with metadata.
         {
           _metadata: {
             generated_at: $generated_at,
@@ -251,18 +266,20 @@ jobs:
         }
         EOF
         
-        # This single, powerful jq command generates the entire release map.
-        # 1. `--slurpfile` reads the entire releases.json into a variable, after transforming it into an efficient lookup map.
-        # 2. `--arg`/`--argjson` pass shell variables into the jq program.
-        # 3. The final argument uses process substitution to stream the mapping.txt file, pre-converted to JSON objects, into the program.
-        jq \
-          --slurpfile release_info_map <(jq '[ .[] | .assets[]? | {key: .name, value: {release: .tag_name, downloadUrl: .browser_download_url, size: .size}} ] | from_entries' "$RELEASES_FILE") \
+        # Step 3: Execute the main jq program with the pre-processed data.
+        # The data is now passed in as arguments and via standard input, which is cleaner
+        # and avoids complex process substitutions in the main command.
+        echo "🚀 Combining data and generating final release map..."
+        echo "$MAPPING_JSON_STREAM" | jq \
+          --argjson release_info_map "$RELEASE_INFO_MAP" \
           --arg repo "$GITHUB_REPOSITORY" \
           --arg generated_at "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
           --argjson total_releases "$(jq '. | length' "$RELEASES_FILE")" \
-          "$JQ_PROGRAM" \
-          <(jq -cR 'split("|") | {originalAssetName: .[0], pool_filename: .[1], poolPath: .[2], packageName: .[3], version: .[4], architecture: .[5]}' "$MAPPING_FILE") \
-          > "$OUTPUT_FILE"
+          "$JQ_PROGRAM" >"$OUTPUT_FILE"
+        if [[ $? -ne 0 ]]; then
+          echo "❌ Error: The final jq command failed during JSON generation." >&2
+          exit 1
+        fi
         
         # --- Summary & Verification ---
         echo "✅ Release map generated: $OUTPUT_FILE"
@@ -272,8 +289,7 @@ jobs:
         jq '._metadata' "$OUTPUT_FILE"
         echo
         jq '.packages | to_entries | .[0:2] | from_entries' "$OUTPUT_FILE"
-
-        
+    
     - name: Create additional metadata
       run: |
         echo "📋 Creating additional metadata files..."

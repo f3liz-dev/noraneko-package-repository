@@ -177,37 +177,69 @@ jobs:
         
     - name: Generate release map JSON
       run: |
-        echo "📋 Generating release map with elegant bash and jq..."
-        mkdir -p public
- 
-        # This jq program constructs the entire JSON output in a single, declarative pass.
-        # It's defined in a variable for better readability and separation of concerns.
+        # Fail on any error (-e), undefined variable (-u), or error in a pipeline (-o pipefail).
+        set -euo pipefail
+        
+        # --- Configuration ---
+        # Use environment variables from GitHub Actions, with local fallbacks.
+        RELEASES_FILE="${1:-releases.json}"
+        MAPPING_FILE="${2:-/tmp/package-info/mapping.txt}"
+        OUTPUT_DIR="public"
+        OUTPUT_FILE="$OUTPUT_DIR/release-map.json"
+        # The GITHUB_REPOSITORY is provided by the GitHub Actions runner environment.
+        GITHUB_REPOSITORY="${GITHUB_REPOSITORY:-your/repository}" 
+        
+        # --- Pre-flight Checks ---
+        echo "🔎 Running pre-flight checks..."
+        # Ensure jq is available
+        if ! command -v jq &> /dev/null; then
+            echo "❌ Error: jq is not installed. Please install it to continue." >&2
+            exit 1
+        fi
+        # Ensure input files exist to prevent cryptic errors later
+        for f in "$RELEASES_FILE" "$MAPPING_FILE"; do
+            if [[ ! -f "$f" ]]; then
+                echo "❌ Error: Input file not found at '$f'" >&2
+                exit 1
+            fi
+        done
+        echo "✅ Checks passed."
+        
+        
+        # --- Main Logic ---
+        echo "📋 Generating release map..."
+        mkdir -p "$OUTPUT_DIR"
+        
+        # This jq program is defined in a variable for clarity.
+        # It's more robust, safely handling packages from the mapping file that
+        # might not have a corresponding entry in the releases.json data.
         read -r -d '' JQ_PROGRAM << 'EOF'
         (
-          # Stage 1: Process package mappings from the input stream.
-          # For each package, look up its corresponding release info from the pre-computed map,
-          # merge the data, and create a key-value pair for the final "packages" object.
           [
             inputs | . as $pkg_map |
-            $release_info_map[$pkg_map.originalAssetName] as $release_data |
-            {
-              key: $pkg_map.pool_filename,
-              value: {
-                # Combine data from the mapping file and the release info map
-                release: $release_data.release,
-                originalAssetName: $pkg_map.originalAssetName,
-                poolPath: $pkg_map.poolPath,
-                packageName: $pkg_map.packageName,
-                version: $pkg_map.version,
-                architecture: $pkg_map.architecture,
-                downloadUrl: $release_data.downloadUrl,
-                size: $release_data.size
+            # Look up release data; defaults to null if not found.
+            ($release_info_map[$pkg_map.originalAssetName] // null) as $release_data |
+            # Only process entries that have a corresponding release asset. This prevents
+            # errors from trying to access fields on a null value, a likely cause of the original error.
+            if $release_data != null then
+              {
+                key: $pkg_map.pool_filename,
+                value: {
+                  release: $release_data.release,
+                  originalAssetName: $pkg_map.originalAssetName,
+                  poolPath: $pkg_map.poolPath,
+                  packageName: $pkg_map.packageName,
+                  version: $pkg_map.version,
+                  architecture: $pkg_map.architecture,
+                  downloadUrl: $release_data.downloadUrl,
+                  size: $release_data.size
+                }
               }
-            }
+            # Silently skip mapping entries that don't have a corresponding release asset.
+            else empty end
           ] | from_entries
         ) as $packages |
-    
-        # Stage 2: Construct the final JSON structure with metadata and the packages object.
+        # Construct the final JSON object with metadata.
         {
           _metadata: {
             generated_at: $generated_at,
@@ -218,29 +250,28 @@ jobs:
           packages: $packages
         }
         EOF
-    
-        # This single, powerful jq command generates the entire release map.
-        # It is highly efficient because:
-        # 1. A lookup map is pre-computed from releases.json for O(1) access to asset data.
-        # 2. All JSON generation is handled internally by jq, which is much faster than shell loops.
-        jq \
-          --slurpfile release_info_map <(jq '[ .[] | .assets[]? | {key: .name, value: {release: .tag_name, downloadUrl: .browser_download_url, size: .size}} ] | from_entries' releases.json) \
-          --arg repo "${{ github.repository }}" \
-          --arg generated_at "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
-          --argjson total_releases "$(jq '. | length' releases.json)" \
-          "$JQ_PROGRAM" \
-          <(jq -cR 'split("|") | {originalAssetName: .[0], pool_filename: .[1], poolPath: .[2], packageName: .[3], version: .[4], architecture: .[5]}' /tmp/package-info/mapping.txt) \
-          > public/release-map.json
-    
-        echo "✅ Release map generated: public/release-map.json"
         
-        # Count packages and display a preview for verification
-        PACKAGE_COUNT=$(jq '.packages | keys | length' public/release-map.json)
+        # This single, powerful jq command generates the entire release map.
+        # 1. `--slurpfile` reads the entire releases.json into a variable, after transforming it into an efficient lookup map.
+        # 2. `--arg`/`--argjson` pass shell variables into the jq program.
+        # 3. The final argument uses process substitution to stream the mapping.txt file, pre-converted to JSON objects, into the program.
+        jq \
+          --slurpfile release_info_map <(jq '[ .[] | .assets[]? | {key: .name, value: {release: .tag_name, downloadUrl: .browser_download_url, size: .size}} ] | from_entries' "$RELEASES_FILE") \
+          --arg repo "$GITHUB_REPOSITORY" \
+          --arg generated_at "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+          --argjson total_releases "$(jq '. | length' "$RELEASES_FILE")" \
+          "$JQ_PROGRAM" \
+          <(jq -cR 'split("|") | {originalAssetName: .[0], pool_filename: .[1], poolPath: .[2], packageName: .[3], version: .[4], architecture: .[5]}' "$MAPPING_FILE") \
+          > "$OUTPUT_FILE"
+        
+        # --- Summary & Verification ---
+        echo "✅ Release map generated: $OUTPUT_FILE"
+        PACKAGE_COUNT=$(jq '.packages | keys | length' "$OUTPUT_FILE")
         echo "📦 Total packages mapped: $PACKAGE_COUNT"
         echo "📄 Release map preview:"
-        jq '._metadata' public/release-map.json
+        jq '._metadata' "$OUTPUT_FILE"
         echo
-        jq '.packages | to_entries | .[0:2] | from_entries' public/release-map.json
+        jq '.packages | to_entries | .[0:2] | from_entries' "$OUTPUT_FILE"
 
         
     - name: Create additional metadata

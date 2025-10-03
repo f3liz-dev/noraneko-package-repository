@@ -176,81 +176,72 @@ jobs:
         cp -r dists public/
         
     - name: Generate release map JSON
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       run: |
-        echo "📋 Generating release map with actual pool paths..."
-        
+        echo "📋 Generating release map with elegant bash and jq..."
         mkdir -p public
-        
-        # Get the total number of releases from releases.json
-        TOTAL_RELEASES=$(jq '. | length' releases.json)
-        
-        # Generate the JSON file using a single, clean block
-        cat > public/release-map.json << JSONEOF
-        {
-          "_metadata": {
-            "generated_at": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-            "repository": "${{ github.repository }}",
-            "total_releases": ${TOTAL_RELEASES},
-            "note": "Pool filenames follow Debian convention: package_version_arch.deb"
-          }
-        }
-        JSONEOF
-        
-        # Build the mapping using the extracted package info
-        echo "  \"packages\": {" >> public/release-map.json
-        
-        FIRST_ENTRY=true
-        while IFS='|' read -r original_filename pool_filename pool_path pkg_name pkg_version pkg_arch; do
-          # Find which release this package came from
-          RELEASE_TAG=$(jq -r --arg name "$original_filename" \
-            '.[] | select(.assets != null) | select(.assets[] | .name == $name) | .tag_name' \
-            releases.json | head -1)
-          
-          DOWNLOAD_URL=$(jq -r --arg name "$original_filename" \
-            '.[] | select(.assets != null) | .assets[] | select(.name == $name) | .browser_download_url' \
-            releases.json | head -1)
-          
-          ASSET_SIZE=$(jq -r --arg name "$original_filename" \
-            '.[] | select(.assets != null) | .assets[] | select(.name == $name) | .size' \
-            releases.json | head -1)
-          
-          if [ "$FIRST_ENTRY" = false ]; then
-            echo "," >> public/release-map.json
-          fi
-          FIRST_ENTRY=false
-          
-          # Use pool_filename as key (what APT will request)
-          cat >> public/release-map.json << ENTRYEOF
-              "$pool_filename": {
-                "release": "$RELEASE_TAG",
-                "originalAssetName": "$original_filename",
-                "poolPath": "$pool_path",
-                "packageName": "$pkg_name",
-                "version": "$pkg_version",
-                "architecture": "$pkg_arch",
-                "downloadUrl": "$DOWNLOAD_URL",
-                "size": $ASSET_SIZE
+ 
+        # This jq program constructs the entire JSON output in a single, declarative pass.
+        # It's defined in a variable for better readability and separation of concerns.
+        read -r -d '' JQ_PROGRAM << 'EOF'
+        (
+          # Stage 1: Process package mappings from the input stream.
+          # For each package, look up its corresponding release info from the pre-computed map,
+          # merge the data, and create a key-value pair for the final "packages" object.
+          [
+            inputs | . as $pkg_map |
+            $release_info_map[$pkg_map.originalAssetName] as $release_data |
+            {
+              key: $pkg_map.pool_filename,
+              value: {
+                # Combine data from the mapping file and the release info map
+                release: $release_data.release,
+                originalAssetName: $pkg_map.originalAssetName,
+                poolPath: $pkg_map.poolPath,
+                packageName: $pkg_map.packageName,
+                version: $pkg_map.version,
+                architecture: $pkg_map.architecture,
+                downloadUrl: $release_data.downloadUrl,
+                size: $release_data.size
               }
-          ENTRYEOF
-        done < /tmp/package-info/mapping.txt
-        
-        echo "" >> public/release-map.json
-        echo "  }" >> public/release-map.json
-        echo "}" >> public/release-map.json
-        
+            }
+          ] | from_entries
+        ) as $packages |
+    
+        # Stage 2: Construct the final JSON structure with metadata and the packages object.
+        {
+          _metadata: {
+            generated_at: $generated_at,
+            repository: $repo,
+            total_releases: $total_releases,
+            note: "Pool filenames follow Debian convention: package_version_arch.deb"
+          },
+          packages: $packages
+        }
+        EOF
+    
+        # This single, powerful jq command generates the entire release map.
+        # It is highly efficient because:
+        # 1. A lookup map is pre-computed from releases.json for O(1) access to asset data.
+        # 2. All JSON generation is handled internally by jq, which is much faster than shell loops.
+        jq \
+          --slurpfile release_info_map <(jq '[ .[] | .assets[]? | {key: .name, value: {release: .tag_name, downloadUrl: .browser_download_url, size: .size}} ] | from_entries' releases.json) \
+          --arg repo "${{ github.repository }}" \
+          --arg generated_at "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" \
+          --argjson total_releases "$(jq '. | length' releases.json)" \
+          "$JQ_PROGRAM" \
+          <(jq -cR 'split("|") | {originalAssetName: .[0], pool_filename: .[1], poolPath: .[2], packageName: .[3], version: .[4], architecture: .[5]}' /tmp/package-info/mapping.txt) \
+          > public/release-map.json
+    
         echo "✅ Release map generated: public/release-map.json"
         
-        # Count packages
+        # Count packages and display a preview for verification
         PACKAGE_COUNT=$(jq '.packages | keys | length' public/release-map.json)
         echo "📦 Total packages mapped: $PACKAGE_COUNT"
-        
-        # Display preview
         echo "📄 Release map preview:"
         jq '._metadata' public/release-map.json
-        echo ""
+        echo
         jq '.packages | to_entries | .[0:2] | from_entries' public/release-map.json
+
         
     - name: Create additional metadata
       run: |

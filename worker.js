@@ -2,12 +2,13 @@ export default {
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     
-    // Handle .deb file requests from pool
+    // Handle .deb file requests from pool - proxy to GitHub
     if (url.pathname.startsWith('/pool/') && url.pathname.endsWith('.deb')) {
       return handleDebFileProxy(request, env, url, ctx);
     }
     
-    // Let Cloudflare Workers Assets handle static files (including release-map.json)
+    // All other requests are handled by Workers Assets automatically
+    // This includes: /release-map.json, /releases.json, /KEY.gpg, /index.html, /dists/*
     return env.ASSETS.fetch(request);
   }
 };
@@ -26,7 +27,7 @@ async function handleDebFileProxy(request, env, url, ctx) {
   };
 
   try {
-    // Fetch release map from static assets
+    // Fetch release map from Workers Assets
     const mapResponse = await env.ASSETS.fetch(new Request(`${url.origin}/release-map.json`));
     
     if (!mapResponse.ok) {

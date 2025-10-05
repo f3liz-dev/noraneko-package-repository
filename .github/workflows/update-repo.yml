@@ -147,18 +147,47 @@ jobs:
           release['assets'].each do |asset|
             next unless asset['name'].end_with?('.deb')
             
-            puts "Downloading #{asset['name']} from #{release['tag_name']}..."
+            output_path = "incoming/#{asset['name']}"
+            expected_size = asset['size']
+            
+            puts "Downloading #{asset['name']} from #{release['tag_name']} (#{expected_size} bytes)..."
             
             uri = URI(asset['browser_download_url'])
             Net::HTTP.start(uri.hostname, uri.port, use_ssl: true) do |http|
               request = Net::HTTP::Get.new(uri)
+              request['Authorization'] = "Bearer #{token}" if asset['browser_download_url'].include?('github.com')
+              
               http.request(request) do |response|
-                File.open("incoming/#{asset['name']}", 'wb') do |file|
+                unless response.is_a?(Net::HTTPSuccess)
+                  puts "⚠️  Failed to download #{asset['name']}: #{response.code} #{response.message}"
+                  next
+                end
+                
+                File.open(output_path, 'wb') do |file|
                   response.read_body { |chunk| file.write(chunk) }
                 end
               end
             end
             
+            # Verify file size
+            actual_size = File.size(output_path)
+            if actual_size != expected_size
+              puts "⚠️  Size mismatch for #{asset['name']}: expected #{expected_size}, got #{actual_size}"
+              File.delete(output_path)
+              next
+            end
+            
+            # Verify it's a valid deb file by checking magic bytes
+            File.open(output_path, 'rb') do |file|
+              magic = file.read(21)
+              unless magic && magic.start_with?('!<arch>')
+                puts "⚠️  Invalid .deb file format for #{asset['name']}"
+                File.delete(output_path)
+                next
+              end
+            end
+            
+            puts "✅ Downloaded and verified #{asset['name']}"
             deb_count += 1
           end
         end

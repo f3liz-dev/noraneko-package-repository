@@ -263,6 +263,7 @@ jobs:
         ruby <<'RUBY'
         require 'json'
         require 'time'
+        require 'fileutils'
         
         puts "📋 Generating release map..."
         

@@ -24,7 +24,7 @@ jobs:
         
     - name: Install dependencies
       run: |
-        sudo apt-get update && sudo apt-get install -y reprepro gnupg2 debsigs dpkg-dev
+        sudo apt-get update && sudo apt-get install -y reprepro gnupg2
         
     - name: Setup GPG
       env:
@@ -181,17 +181,30 @@ jobs:
         Dir.glob('incoming/*.deb').each do |deb_path|
           original_filename = File.basename(deb_path)
           
-          # Extract control information using dpkg-deb
-          pkg_name, status = Open3.capture2('dpkg-deb', '-f', deb_path, 'Package')
-          pkg_version, status = Open3.capture2('dpkg-deb', '-f', deb_path, 'Version')
-          pkg_arch, status = Open3.capture2('dpkg-deb', '-f', deb_path, 'Architecture')
+          puts "Processing: #{original_filename}"
           
-          pkg_name = pkg_name.strip
-          pkg_version = pkg_version.strip
-          pkg_arch = pkg_arch.strip
+          # Extract all control information at once
+          control_output, status = Open3.capture2('dpkg-deb', '-f', deb_path)
           
-          if pkg_name.empty? || pkg_version.empty? || pkg_arch.empty?
+          unless status.success?
             puts "⚠️  Warning: Failed to extract metadata from #{original_filename}"
+            next
+          end
+          
+          # Parse the control file output
+          fields = {}
+          control_output.each_line do |line|
+            if line =~ /^(\w+(?:-\w+)*): (.+)$/
+              fields[$1] = $2.strip
+            end
+          end
+          
+          pkg_name = fields['Package']
+          pkg_version = fields['Version']
+          pkg_arch = fields['Architecture']
+          
+          if pkg_name.nil? || pkg_version.nil? || pkg_arch.nil?
+            puts "⚠️  Warning: Missing required fields in #{original_filename}"
             puts "    Package: '#{pkg_name}', Version: '#{pkg_version}', Architecture: '#{pkg_arch}'"
             next
           end

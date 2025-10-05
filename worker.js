@@ -1,38 +1,27 @@
-export default {
-  async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-    
-    // Handle .deb file requests from pool - proxy to GitHub
-    if (url.pathname.startsWith('/pool/') && url.pathname.endsWith('.deb')) {
-      return handleDebFileProxy(request, env, url, ctx);
-    }
-    
-    // All other requests are handled by Workers Assets automatically
-    // This includes: /release-map.json, /releases.json, /KEY.gpg, /index.html, /dists/*
-    return env.ASSETS.fetch(request);
-  }
-};
+import { Hono } from 'hono';
 
-async function handleDebFileProxy(request, env, url, ctx) {
-  // Extract the pool filename from the URL
-  // Example: /pool/main/n/noraneko-alpha/noraneko-alpha_0.2.0~build1_amd64.deb
+const app = new Hono();
+
+// Helper function to handle .deb file proxy requests
+async function handleDebFileProxy(c) {
+  const url = new URL(c.req.url);
   const poolFilename = decodeURIComponent(url.pathname.split('/').pop());
   
-  const githubRepo = env.GITHUB_REPO || 'f3liz-dev/noraneko-package-repository';
+  const githubRepo = c.env.GITHUB_REPO || 'f3liz-dev/noraneko-package-repository';
   
   const headers = {
     'User-Agent': 'noraneko-apt-repo/1.0',
-    'Authorization': `Bearer ${env.GITHUB_TOKEN}`,
+    'Authorization': `Bearer ${c.env.GITHUB_TOKEN}`,
     'Accept': 'application/vnd.github+json',
   };
 
   try {
     // Fetch release map from Workers Assets
-    const mapResponse = await env.ASSETS.fetch(new Request(`${url.origin}/release-map.json`));
+    const mapResponse = await c.env.ASSETS.fetch(new Request(`${url.origin}/release-map.json`));
     
     if (!mapResponse.ok) {
       console.error('Failed to load release-map.json');
-      return new Response('Release map not found', { status: 500 });
+      return c.text('Release map not found', 500);
     }
     
     const releaseData = await mapResponse.json();
@@ -44,7 +33,7 @@ async function handleDebFileProxy(request, env, url, ctx) {
     if (!packageInfo) {
       console.error(`Package not found in release map: ${poolFilename}`);
       console.log(`Available packages: ${Object.keys(packageMap).slice(0, 5).join(', ')}...`);
-      return new Response('Package not found in release map', { status: 404 });
+      return c.text('Package not found in release map', 404);
     }
     
     console.log(`Found mapping for ${poolFilename}:`);
@@ -60,7 +49,7 @@ async function handleDebFileProxy(request, env, url, ctx) {
       console.error(`GitHub API request failed with status: ${releasesResponse.status}`);
       const errorBody = await releasesResponse.text();
       console.error(`Response body: ${errorBody}`);
-      return new Response('Release not found on GitHub', { status: releasesResponse.status });
+      return c.text('Release not found on GitHub', releasesResponse.status);
     }
     
     const release = await releasesResponse.json();
@@ -72,7 +61,7 @@ async function handleDebFileProxy(request, env, url, ctx) {
       console.error(`Asset not found: "${packageInfo.originalAssetName}" in release "${release.tag_name}"`);
       const availableAssets = release.assets.map(a => a.name);
       console.log(`Available assets: ${JSON.stringify(availableAssets, null, 2)}`);
-      return new Response('Package asset not found on GitHub', { status: 404 });
+      return c.text('Package asset not found on GitHub', 404);
     }
     
     // Proxy the download
@@ -80,7 +69,7 @@ async function handleDebFileProxy(request, env, url, ctx) {
     
   } catch (error) {
     console.error('Exception in handleDebFileProxy:', error);
-    return new Response(`Internal Server Error: ${error.message}`, { status: 500 });
+    return c.text(`Internal Server Error: ${error.message}`, 500);
   }
 }
 
@@ -104,3 +93,22 @@ async function fetchAndReturnDeb(asset, fileName) {
     }
   });
 }
+
+// Handle .deb file requests from pool - proxy to GitHub
+app.get('/pool/*', async (c) => {
+  const path = c.req.path;
+  
+  if (path.endsWith('.deb')) {
+    return handleDebFileProxy(c);
+  }
+  
+  // If not a .deb file, pass through to ASSETS
+  return c.env.ASSETS.fetch(c.req.raw);
+});
+
+// All other requests are handled by Workers Assets
+app.all('*', async (c) => {
+  return c.env.ASSETS.fetch(c.req.raw);
+});
+
+export default app;

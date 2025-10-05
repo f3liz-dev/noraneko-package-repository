@@ -17,7 +17,7 @@ async function handleDebFileProxy(c) {
 
   try {
     // Fetch release map from Workers Assets
-    const mapResponse = await c.env.ASSETS.fetch(new Request(`${url.origin}/release-map.json`));
+    const mapResponse = await c.env.ASSETS.fetch("/release-map.json");
     
     if (!mapResponse.ok) {
       console.error('Failed to load release-map.json');

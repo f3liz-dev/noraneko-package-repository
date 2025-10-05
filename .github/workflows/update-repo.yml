@@ -171,6 +171,7 @@ jobs:
       run: |
         ruby <<'RUBY'
         require 'fileutils'
+        require 'open3'
         
         puts "📋 Extracting package control information..."
         
@@ -181,9 +182,19 @@ jobs:
           original_filename = File.basename(deb_path)
           
           # Extract control information using dpkg-deb
-          pkg_name = `dpkg-deb -f "#{deb_path}" Package`.strip
-          pkg_version = `dpkg-deb -f "#{deb_path}" Version`.strip
-          pkg_arch = `dpkg-deb -f "#{deb_path}" Architecture`.strip
+          pkg_name, status = Open3.capture2('dpkg-deb', '-f', deb_path, 'Package')
+          pkg_version, status = Open3.capture2('dpkg-deb', '-f', deb_path, 'Version')
+          pkg_arch, status = Open3.capture2('dpkg-deb', '-f', deb_path, 'Architecture')
+          
+          pkg_name = pkg_name.strip
+          pkg_version = pkg_version.strip
+          pkg_arch = pkg_arch.strip
+          
+          if pkg_name.empty? || pkg_version.empty? || pkg_arch.empty?
+            puts "⚠️  Warning: Failed to extract metadata from #{original_filename}"
+            puts "    Package: '#{pkg_name}', Version: '#{pkg_version}', Architecture: '#{pkg_arch}'"
+            next
+          end
           
           # Debian pool filename format
           pool_filename = "#{pkg_name}_#{pkg_version}_#{pkg_arch}.deb"
@@ -199,6 +210,9 @@ jobs:
         
         mapping_file.close
         puts "✅ Package metadata extracted"
+        puts
+        puts "Mapping file contents:"
+        puts File.read('/tmp/package-info/mapping.txt')
         RUBY
         
     - name: Export public key

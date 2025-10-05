@@ -4,7 +4,7 @@ Hash: SHA512
 Origin: Noraneko Package Repository
 Label: Noraneko
 Codename: alpha
-Date: Sun, 05 Oct 2025 05:29:51 UTC
+Date: Sun, 05 Oct 2025 05:40:34 UTC
 Architectures: amd64
 Components: main
 Description: APT repository for Noraneko packages
@@ -31,8 +31,8 @@ SHA256:
  b262167edd86badd7b46fc55544109db1625916a6ffbf545168899569feb51ba 139 main/source/Release
 -----BEGIN PGP SIGNATURE-----
 
-iHUEARYKAB0WIQSb0cKErOQT/jQp6pEnNUHzrNuinwUCaOICTwAKCRAnNUHzrNui
-n6pmAQCp/FDuGB/0k4hnI7rRQBHvXft6nRhifiQ/SLRNd75nLQEAtTxzoLhVMQGV
-3HT9D+pd5S28UBUGJEUo64gZGyhiIQw=
-=gVKY
+iHUEARYKAB0WIQSb0cKErOQT/jQp6pEnNUHzrNuinwUCaOIE0gAKCRAnNUHzrNui
+n869AQDFpGpIkEz3pqrcGH6/L0vRnLpl0pwjPqrmHS0oAwGrYwD+Oj4ZZWPjS/yA
+Mow02eTw2LRMML6tIRfUNCqXP7Ex5gI=
+=d8LG
 -----END PGP SIGNATURE-----

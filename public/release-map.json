@@ -1,0 +1,20 @@
+{
+  "_metadata": {
+    "generated_at": "2025-10-05T04:48:40Z",
+    "repository": "f3liz-dev/noraneko-package-repository",
+    "total_releases": 1,
+    "note": "Pool filenames follow Debian convention: package_version_arch.deb"
+  },
+  "packages": {
+    "__.deb": {
+      "release": "v0.2.0-1",
+      "originalAssetName": "noraneko-alpha_0.2.0.build1_amd64.deb",
+      "poolPath": "pool/main///__.deb",
+      "packageName": null,
+      "version": null,
+      "architecture": null,
+      "downloadUrl": "https://github.com/f3liz-dev/noraneko-package-repository/releases/download/v0.2.0-1/noraneko-alpha_0.2.0.build1_amd64.deb",
+      "size": 82497370
+    }
+  }
+}

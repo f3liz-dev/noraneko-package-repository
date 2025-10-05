@@ -1,0 +1,18 @@
+[
+  {
+    "tag": "v0.2.0-1",
+    "name": "noraneko-0.2.0~build1",
+    "published_at": "2025-09-30T08:50:55Z",
+    "prerelease": false,
+    "draft": false,
+    "packages": [
+      {
+        "name": "noraneko-alpha_0.2.0.build1_amd64.deb",
+        "size": 82497370,
+        "download_count": 12,
+        "created_at": "2025-09-30T08:59:27Z",
+        "browser_download_url": "https://github.com/f3liz-dev/noraneko-package-repository/releases/download/v0.2.0-1/noraneko-alpha_0.2.0.build1_amd64.deb"
+      }
+    ]
+  }
+]
